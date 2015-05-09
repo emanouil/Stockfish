@@ -340,7 +340,6 @@ namespace {
     Depth depth;
     Value bestValue, alpha, beta, delta;
 
-    Move easyMove = EasyMove.get(pos.key());
     EasyMove.clear();
 
     std::memset(ss-2, 0, 5 * sizeof(Stack));
@@ -1109,7 +1108,7 @@ moves_loop: // When in check and at SpNode search starts from here
       // Step 19. Check for splitting the search
       if (   !SpNode
           &&  Threads.size() >= 2
-          &&  depth >= Threads.minimumSplitDepth
+          &&  depth + (PvNode?1:0) + 2  >= Threads.minimumSplitDepth
           &&  (   !thisThread->activeSplitPoint
                || !thisThread->activeSplitPoint->allSlavesSearching
                || (   Threads.size() > MAX_SLAVES_PER_SPLITPOINT
@@ -1117,15 +1116,22 @@ moves_loop: // When in check and at SpNode search starts from here
           &&  thisThread->splitPointsSize < MAX_SPLITPOINTS_PER_THREAD)
       {
           assert(bestValue > -VALUE_INFINITE && bestValue < beta);
+          int level = 0;
+          for (SplitPoint* p = thisThread->activeSplitPoint; p; p = p->parentSplitPoint)
+                      level++;
 
-          thisThread->split(pos, ss, alpha, beta, &bestValue, &bestMove,
+          if ((int)(depth+(PvNode?1:0)  + (PvNode?((thisThread->splitPointsSize==0)  + (level<=1)   ):((thisThread->splitPointsSize==0)  && (level<=1)   )) ) >= (int)Threads.minimumSplitDepth)
+          {
+
+              thisThread->split(pos, ss, alpha, beta, &bestValue, &bestMove,
                             depth, moveCount, &mp, NT, cutNode);
 
-          if (Signals.stop || thisThread->cutoff_occurred())
-              return VALUE_ZERO;
+              if (Signals.stop || thisThread->cutoff_occurred())
+                 return VALUE_ZERO;
 
-          if (bestValue >= beta)
-              break;
+              if (bestValue >= beta)
+                 break;
+          }
       }
     }
 
