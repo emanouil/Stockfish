@@ -474,10 +474,7 @@ namespace {
                 // of the available time has been used or we matched an easyMove
                 // from the previous search and just did a fast verification.
                 if (   RootMoves.size() == 1
-                    || Time.elapsed() > Time.available()
-                    || (   RootMoves[0].pv[0] == easyMove
-                        && BestMoveChanges < 0.03
-                        && Time.elapsed() > Time.available() / 10))
+                    || Time.elapsed() > Time.available())
                 {
                     // If we are allowed to ponder do not stop the search now but
                     // keep pondering until the GUI sends "ponderhit" or "stop".
