@@ -62,7 +62,7 @@ struct Stats {
   }
 
 private:
-  T table[PIECE_NB][SQUARE_NB];
+  T table[PIECE_NB][SQUARE_NB]  __attribute__ ((aligned (64)));
 };
 
 typedef Stats< true, Value> GainsStats;
