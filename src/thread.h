@@ -36,9 +36,11 @@
 
 struct Thread;
 
-const size_t MAX_THREADS = 128;
-const size_t MAX_SPLITPOINTS_PER_THREAD = 8;
-const size_t MAX_SLAVES_PER_SPLITPOINT = 4;
+const size_t MAX_THREADS = 32;
+const size_t MAX_SPLITPOINTS_PER_THREAD = 12;
+const size_t MAX_SLAVES_PER_SPLITPOINT = 5;
+
+
 
 class Spinlock {
 
