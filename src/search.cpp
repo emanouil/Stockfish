@@ -1108,7 +1108,7 @@ moves_loop: // When in check and at SpNode search starts from here
       // Step 19. Check for splitting the search
       if (   !SpNode
           &&  Threads.size() >= 2
-          &&  depth + (PvNode?1:0) + 2  >= Threads.minimumSplitDepth
+          && ((int)(depth+(PvNode?1:0)  + (thisThread->splitPointsSize==0) )  >= (int)Threads.minimumSplitDepth)
           &&  (   !thisThread->activeSplitPoint
                || !thisThread->activeSplitPoint->allSlavesSearching
                || (   Threads.size() > MAX_SLAVES_PER_SPLITPOINT
@@ -1116,13 +1116,6 @@ moves_loop: // When in check and at SpNode search starts from here
           &&  thisThread->splitPointsSize < MAX_SPLITPOINTS_PER_THREAD)
       {
           assert(bestValue > -VALUE_INFINITE && bestValue < beta);
-          int level = 0;
-          for (SplitPoint* p = thisThread->activeSplitPoint; p; p = p->parentSplitPoint)
-                      level++;
-
-          if ((int)(depth+(PvNode?1:0)  + (PvNode?((thisThread->splitPointsSize==0)  + (level<=1)   ):((thisThread->splitPointsSize==0)  && (level<=1)   )) ) >= (int)Threads.minimumSplitDepth)
-          {
-
               thisThread->split(pos, ss, alpha, beta, &bestValue, &bestMove,
                             depth, moveCount, &mp, NT, cutNode);
 
@@ -1131,7 +1124,6 @@ moves_loop: // When in check and at SpNode search starts from here
 
               if (bestValue >= beta)
                  break;
-          }
       }
     }
 
@@ -1730,7 +1722,8 @@ void Thread::idle_loop() {
               sleepCondition.wait(lk);
       }
       else
-          std::this_thread::yield(); // Wait for a new job or for our slaves to finish
+	 __asm__ __volatile__("pause\n": : :"memory");
+	//std::this_thread::yield();
   }
 }
 

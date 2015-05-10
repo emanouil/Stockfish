@@ -31,15 +31,9 @@ public:
 		 if (pred){
 			local->locked=true;
 			pred->next=local;
-			 __asm__ __volatile__("": : :"memory");
-			int cntr=0;
+			__asm__ __volatile__("": : :"memory");
                         while (local->locked){
-				//	__asm__ __volatile__("pause\n": : :"memory");
-					 cntr++;
-					if (cntr>100000) {
-							std::this_thread::yield();
-					//		cntr=0;
-					}
+					__asm__ __volatile__("pause\n": : :"memory");
 			}
 		 }
 	}
