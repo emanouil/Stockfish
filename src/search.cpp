@@ -333,6 +333,8 @@ namespace {
   // id_loop() is the main iterative deepening loop. It calls search() repeatedly
   // with increasing depth until the allocated thinking time has been consumed,
   // user stops the search, or the maximum search depth is reached.
+    size_t multiPV;
+    int  multiPVproportion; 
 
   void id_loop(Position& pos) {
 
@@ -352,7 +354,8 @@ namespace {
 
     TT.new_search();
 
-    size_t multiPV = Options["MultiPV"];
+    multiPV = Options["MultiPV"];
+    multiPVproportion = Options["MultiPVproportion"];
     Skill skill(Options["Skill Level"]);
 
     // When playing with strength handicap enable MultiPV search that we will
@@ -374,6 +377,13 @@ namespace {
             rm.previousScore = rm.score;
 
         // MultiPV loop. We perform a full root search for each PV line
+
+        if (multiPV>1 && ((Limits.use_time_management() &&  Time.elapsed() > Time.available() *multiPVproportion /100 ) ||(Limits.movetime && Time.elapsed() >= Limits.movetime * multiPVproportion / 100)))
+	{
+
+		multiPV = 1;
+		
+        }
         for (PVIdx = 0; PVIdx < multiPV && !Signals.stop; ++PVIdx)
         {
             // Reset aspiration window starting size
@@ -1496,7 +1506,6 @@ string UCI::pv(const Position& pos, Depth depth, Value alpha, Value beta) {
 
   std::stringstream ss;
   int elapsed = Time.elapsed() + 1;
-  size_t multiPV = std::min((size_t)Options["MultiPV"], RootMoves.size());
   int selDepth = 0;
 
   for (Thread* th : Threads)
