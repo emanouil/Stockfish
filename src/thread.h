@@ -34,24 +34,40 @@
 #include "search.h"
 #include "thread_win32.h"
 
+
 struct Thread;
 
-const size_t MAX_THREADS = 128;
-const size_t MAX_SPLITPOINTS_PER_THREAD = 8;
-const size_t MAX_SLAVES_PER_SPLITPOINT = 4;
+const size_t MAX_THREADS = 32;
+const size_t MAX_SPLITPOINTS_PER_THREAD = 12;
+const size_t MAX_SLAVES_PER_SPLITPOINT = 5;
 
-class Spinlock {
+extern  volatile char easy_slave[MAX_THREADS];
 
-  std::atomic_int lock;
 
-public:
-  Spinlock() { lock = 1; } // Init here to workaround a bug with MSVC 2013
-  void acquire() {
-      while (lock.fetch_sub(1, std::memory_order_acquire) != 1)
-          while (lock.load(std::memory_order_relaxed) <= 0)
-              std::this_thread::yield(); // Be nice to hyperthreading
-  }
-  void release() { lock.store(1, std::memory_order_release); }
+
+
+const int MAX_LOCKS=2;
+#include "mcs_lock.h"
+static __thread  Mcs_Lock::mcs_lock_struct_t   locallock[MAX_LOCKS] __attribute__ ((aligned (64)));
+
+
+template <int locknum>
+class Spinlock{
+        Mcs_Lock  mlock  __attribute__ ((aligned (64)));
+        //Mcs_Lock  mlock ;
+        public:
+  Spinlock(){
+                mlock.init();
+                locallock[locknum].next=NULL;
+                locallock[locknum].locked=false;
+        }
+
+        void acquire(){
+                mlock.lock(&locallock[locknum]);
+        }
+        void release(){
+                mlock.unlock(&locallock[locknum]);
+        }
 };
 
 
@@ -74,7 +90,7 @@ struct SplitPoint {
   SplitPoint* parentSplitPoint;
 
   // Shared variable data
-  Spinlock spinlock;
+  Spinlock<0> spinlock;
   std::bitset<MAX_THREADS> slavesMask;
   volatile bool allSlavesSearching;
   volatile uint64_t nodes;
@@ -97,7 +113,7 @@ struct ThreadBase : public std::thread {
   void wait_for(volatile const bool& b);
 
   Mutex mutex;
-  Spinlock spinlock;
+  Spinlock<1> spinlock;
   ConditionVariable sleepCondition;
   volatile bool exit = false;
 };

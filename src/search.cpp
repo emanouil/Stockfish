@@ -70,7 +70,7 @@ namespace {
   Value futility_margin(Depth d) { return Value(200 * d); }
 
   // Futility and reductions lookup tables, initialized at startup
-  int FutilityMoveCounts[2][16];  // [improving][depth]
+  int FutilityMoveCounts[2][32];  // [improving][depth]
   Depth Reductions[2][2][64][64]; // [pv][improving][depth][moveNumber]
 
   template <bool PvNode> Depth reduction(bool i, Depth d, int mn) {
@@ -173,7 +173,7 @@ void Search::init() {
                       Reductions[pv][imp][d][mc] += ONE_PLY;
               }
 
-  for (int d = 0; d < 16; ++d)
+  for (int d = 0; d < 32; ++d)
   {
       FutilityMoveCounts[0][d] = int(2.4 + 0.773 * pow(d + 0.00, 1.8));
       FutilityMoveCounts[1][d] = int(2.9 + 1.045 * pow(d + 0.49, 1.8));
@@ -340,7 +340,6 @@ namespace {
     Depth depth;
     Value bestValue, alpha, beta, delta;
 
-    Move easyMove = EasyMove.get(pos.key());
     EasyMove.clear();
 
     std::memset(ss-2, 0, 5 * sizeof(Stack));
@@ -474,10 +473,7 @@ namespace {
                 // of the available time has been used or we matched an easyMove
                 // from the previous search and just did a fast verification.
                 if (   RootMoves.size() == 1
-                    || Time.elapsed() > Time.available()
-                    || (   RootMoves[0].pv[0] == easyMove
-                        && BestMoveChanges < 0.03
-                        && Time.elapsed() > Time.available() / 10))
+                    || Time.elapsed() > Time.available())
                 {
                     // If we are allowed to ponder do not stop the search now but
                     // keep pondering until the GUI sends "ponderhit" or "stop".
@@ -699,10 +695,12 @@ namespace {
         if (v <= ralpha)
             return v;
     }
-
+	static __thread int ctrp=0;
+	ctrp++;
     // Step 7. Futility pruning: child node (skipped when in check)
     if (   !RootNode
-        &&  depth < 7 * ONE_PLY
+        &&  depth < 16 * ONE_PLY
+        &&  ((ctrp*892797 % 9879887 < 9879887 *2/3) || (depth <5 *ONE_PLY)    )
         &&  eval - futility_margin(depth) >= beta
         &&  eval < VALUE_KNOWN_WIN  // Do not return unproven wins
         &&  pos.non_pawn_material(pos.side_to_move()))
@@ -711,6 +709,7 @@ namespace {
     // Step 8. Null move search with verification search (is omitted in PV nodes)
     if (   !PvNode
         &&  depth >= 2 * ONE_PLY
+        &&  ((ctrp*987917 % 9841287 < 9841287 *2/3) || (depth >=4 *ONE_PLY)    )
         &&  eval >= beta
         &&  pos.non_pawn_material(pos.side_to_move()))
     {
@@ -901,7 +900,7 @@ moves_loop: // When in check and at SpNode search starts from here
           &&  bestValue > VALUE_MATED_IN_MAX_PLY)
       {
           // Move count based pruning
-          if (   depth < 16 * ONE_PLY
+          if (   depth < 32 * ONE_PLY
               && moveCount >= FutilityMoveCounts[improving][depth])
           {
               if (SpNode)
@@ -1112,7 +1111,8 @@ moves_loop: // When in check and at SpNode search starts from here
       // Step 19. Check for splitting the search
       if (   !SpNode
           &&  Threads.size() >= 2
-          &&  depth >= Threads.minimumSplitDepth
+          && ((int)(depth+(PvNode?1:0)  + (thisThread->splitPointsSize==0) )  >= (int)Threads.minimumSplitDepth)
+          //&&  depth + (PvNode?1:0) + 2  >= Threads.minimumSplitDepth
           &&  (   !thisThread->activeSplitPoint
                || !thisThread->activeSplitPoint->allSlavesSearching
                || (   Threads.size() > MAX_SLAVES_PER_SPLITPOINT
@@ -1120,15 +1120,25 @@ moves_loop: // When in check and at SpNode search starts from here
           &&  thisThread->splitPointsSize < MAX_SPLITPOINTS_PER_THREAD)
       {
           assert(bestValue > -VALUE_INFINITE && bestValue < beta);
+	#ifdef skdjflj
+          int level = 0;
+          for (SplitPoint* p = thisThread->activeSplitPoint; p; p = p->parentSplitPoint)
+                      level++;
+	#endif
+          //if ((int)(depth+(PvNode?1:0)  + (PvNode?((thisThread->splitPointsSize==0)  + (level<=1)   ):((thisThread->splitPointsSize==0)  && (level<=1)   )) ) >= (int)Threads.minimumSplitDepth)
+          //if ((int)(depth+(PvNode?1:0)  + (PvNode?((thisThread->splitPointsSize==0) ||  (level<=1)   ):((thisThread->splitPointsSize==0)  && (level<=1)   )) ) >= (int)Threads.minimumSplitDepth)
+          //if ((int)(depth+(PvNode?1:0)  + (thisThread->splitPointsSize==0) )  >= (int)Threads.minimumSplitDepth)
+          {
 
-          thisThread->split(pos, ss, alpha, beta, &bestValue, &bestMove,
+              thisThread->split(pos, ss, alpha, beta, &bestValue, &bestMove,
                             depth, moveCount, &mp, NT, cutNode);
 
-          if (Signals.stop || thisThread->cutoff_occurred())
-              return VALUE_ZERO;
+              if (Signals.stop || thisThread->cutoff_occurred())
+                 return VALUE_ZERO;
 
-          if (bestValue >= beta)
-              break;
+              if (bestValue >= beta)
+                 break;
+          }
       }
     }
 
@@ -1727,7 +1737,8 @@ void Thread::idle_loop() {
               sleepCondition.wait(lk);
       }
       else
-          std::this_thread::yield(); // Wait for a new job or for our slaves to finish
+	 __asm__ __volatile__("pause\n": : :"memory");
+	//std::this_thread::yield();
   }
 }
 
