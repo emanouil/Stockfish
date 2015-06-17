@@ -70,7 +70,7 @@ namespace {
   Value futility_margin(Depth d) { return Value(200 * d); }
 
   // Futility and reductions lookup tables, initialized at startup
-  int FutilityMoveCounts[2][16];  // [improving][depth]
+  int FutilityMoveCounts[2][32];  // [improving][depth]
   Depth Reductions[2][2][64][64]; // [pv][improving][depth][moveNumber]
 
   template <bool PvNode> Depth reduction(bool i, Depth d, int mn) {
@@ -134,7 +134,6 @@ namespace {
   Value DrawValue[COLOR_NB];
   HistoryStats History;
   CounterMovesHistoryStats CounterMovesHistory;
-  GainsStats Gains;
   MovesStats Countermoves;
 
   template <NodeType NT, bool SpNode>
@@ -173,7 +172,7 @@ void Search::init() {
                       Reductions[pv][imp][d][mc] += ONE_PLY;
               }
 
-  for (int d = 0; d < 16; ++d)
+  for (int d = 0; d < 32; ++d)
   {
       FutilityMoveCounts[0][d] = int(2.4 + 0.773 * pow(d + 0.00, 1.8));
       FutilityMoveCounts[1][d] = int(2.9 + 1.045 * pow(d + 0.49, 1.8));
@@ -181,15 +180,14 @@ void Search::init() {
 }
 
 
-/// Search::reset() clears all search memory, to restore a deterministic state
+/// Search::reset() clears all search memory, to obtain reproducible search results
 
 void Search::reset () {
 
-    TT.clear();
-    History.clear();
-    CounterMovesHistory.clear();
-    Gains.clear();
-    Countermoves.clear();
+  TT.clear();
+  History.clear();
+  CounterMovesHistory.clear();
+  Countermoves.clear();
 }
 
 
@@ -643,7 +641,7 @@ namespace {
         }
     }
 
-    // Step 5. Evaluate the position statically and update parent's gain statistics
+    // Step 5. Evaluate the position statically
     if (inCheck)
     {
         ss->staticEval = eval = VALUE_NONE;
@@ -672,17 +670,6 @@ namespace {
     if (ss->skipEarlyPruning)
         goto moves_loop;
 
-    if (   !pos.captured_piece_type()
-        &&  ss->staticEval != VALUE_NONE
-        && (ss-1)->staticEval != VALUE_NONE
-        && (move = (ss-1)->currentMove) != MOVE_NULL
-        &&  move != MOVE_NONE
-        &&  type_of(move) == NORMAL)
-    {
-        Square to = to_sq(move);
-        Gains.update(pos.piece_on(to), to, -(ss-1)->staticEval - ss->staticEval);
-    }
-
     // Step 6. Razoring (skipped when in check)
     if (   !PvNode
         &&  depth < 4 * ONE_PLY
@@ -701,8 +688,8 @@ namespace {
     }
 
     // Step 7. Futility pruning: child node (skipped when in check)
-    if (   !RootNode
-        &&  depth < 7 * ONE_PLY
+    if (   !PvNode
+        &&  depth < 6 * ONE_PLY
         &&  eval - futility_margin(depth) >= beta
         &&  eval < VALUE_KNOWN_WIN  // Do not return unproven wins
         &&  pos.non_pawn_material(pos.side_to_move()))
@@ -858,7 +845,7 @@ moves_loop: // When in check and at SpNode search starts from here
       captureOrPromotion = pos.capture_or_promotion(move);
 
       givesCheck =  type_of(move) == NORMAL && !ci.dcCandidates
-                  ? ci.checkSq[type_of(pos.piece_on(from_sq(move)))] & to_sq(move)
+                  ? ci.checkSquares[type_of(pos.piece_on(from_sq(move)))] & to_sq(move)
                   : pos.gives_check(move, ci);
 
       dangerous =   givesCheck
@@ -894,14 +881,14 @@ moves_loop: // When in check and at SpNode search starts from here
       newDepth = depth - ONE_PLY + extension;
 
       // Step 13. Pruning at shallow depth
-      if (   !RootNode
+      if (   !PvNode
           && !captureOrPromotion
           && !inCheck
           && !dangerous
           &&  bestValue > VALUE_MATED_IN_MAX_PLY)
       {
           // Move count based pruning
-          if (   depth < 16 * ONE_PLY
+          if (   depth < 32 * ONE_PLY
               && moveCount >= FutilityMoveCounts[improving][depth])
           {
               if (SpNode)
@@ -915,8 +902,7 @@ moves_loop: // When in check and at SpNode search starts from here
           // Futility pruning: parent node
           if (predictedDepth < 7 * ONE_PLY)
           {
-              futilityValue =  ss->staticEval + futility_margin(predictedDepth)
-                             + 128 + Gains[pos.moved_piece(move)][to_sq(move)];
+              futilityValue =  ss->staticEval + futility_margin(predictedDepth) + 256;
 
               if (futilityValue <= alpha)
               {
@@ -967,12 +953,17 @@ moves_loop: // When in check and at SpNode search starts from here
       {
           ss->reduction = reduction<PvNode>(improving, depth, moveCount);
 
+static __thread int isred=0;
+	isred++;
           if (   (!PvNode && cutNode)
               || (   History[pos.piece_on(to_sq(move))][to_sq(move)] < VALUE_ZERO
                   && CounterMovesHistory[pos.piece_on(prevMoveSq)][prevMoveSq]
-                                        [pos.piece_on(to_sq(move))][to_sq(move)] <= VALUE_ZERO))
-              ss->reduction += ONE_PLY;
-
+                                        [pos.piece_on(to_sq(move))][to_sq(move)] <= VALUE_ZERO)){
+ 		Color us = pos.side_to_move();
+		if ((isred&1 ) || (us==WHITE)){
+	             	ss->reduction += ONE_PLY;
+		}
+	}
           if (move == countermove)
               ss->reduction = std::max(DEPTH_ZERO, ss->reduction - ONE_PLY);
 
@@ -1112,7 +1103,8 @@ moves_loop: // When in check and at SpNode search starts from here
       // Step 19. Check for splitting the search
       if (   !SpNode
           &&  Threads.size() >= 2
-          &&  depth >= Threads.minimumSplitDepth
+          &&  depth + (PvNode?1:0)  >= Threads.minimumSplitDepth
+
           &&  (   !thisThread->activeSplitPoint
                || !thisThread->activeSplitPoint->allSlavesSearching
                || (   Threads.size() > MAX_SLAVES_PER_SPLITPOINT
@@ -1281,7 +1273,7 @@ moves_loop: // When in check and at SpNode search starts from here
       assert(is_ok(move));
 
       givesCheck =  type_of(move) == NORMAL && !ci.dcCandidates
-                  ? ci.checkSq[type_of(pos.piece_on(from_sq(move)))] & to_sq(move)
+                  ? ci.checkSquares[type_of(pos.piece_on(from_sq(move)))] & to_sq(move)
                   : pos.gives_check(move, ci);
 
       // Futility pruning
@@ -1727,7 +1719,8 @@ void Thread::idle_loop() {
               sleepCondition.wait(lk);
       }
       else
-          std::this_thread::yield(); // Wait for a new job or for our slaves to finish
+          //std::this_thread::yield(); // Wait for a new job or for our slaves to finish
+          __asm__ __volatile__("pause\n": : :"memory");
   }
 }
 

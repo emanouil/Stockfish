@@ -27,7 +27,9 @@
 #include "search.h"
 #include "thread.h"
 #include "timeman.h"
+#include "tt.h"
 #include "uci.h"
+
 
 using namespace std;
 
@@ -142,7 +144,6 @@ namespace {
 /// In addition to the UCI ones, also some additional debug commands are supported.
 
 void UCI::loop(int argc, char* argv[]) {
-
   Position pos(StartFEN, false, Threads.main()); // The root position
   string token, cmd;
 

@@ -20,17 +20,18 @@
 #include <algorithm>
 #include <cassert>
 #include <ostream>
-
 #include "misc.h"
-#include "search.h"
 #include "thread.h"
 #include "tt.h"
 #include "uci.h"
 #include "syzygy/tbprobe.h"
+#include "search.h"
 
 using std::string;
 
 UCI::OptionsMap Options; // Global object
+int nuller;
+bool prune;
 
 namespace UCI {
 
@@ -40,6 +41,10 @@ void on_hash_size(const Option& o) { TT.resize(o); }
 void on_logger(const Option& o) { start_logger(o); }
 void on_threads(const Option&) { Threads.read_uci_options(); }
 void on_tb_path(const Option& o) { Tablebases::init(o); }
+//void on_prune(const Option& o) { prune=o["Prune"]; }
+//void on_nuller(const Option& o) { nuller=o["nuller"]; }
+//void on_space_weight(const Option& o) { Weights[3].eg=o["SpaceWeight"]; }//This is not space but kingsafety
+//void on_kings_weight(const Option& o) { Weights[4].eg=o["KingsWeight"]; }//This is not space but kingsafety
 
 
 /// Our case insensitive less() function as required by UCI protocol
@@ -63,6 +68,7 @@ void init(OptionsMap& o) {
   o["Hash"]                  << Option(16, 1, MaxHashMB, on_hash_size);
   o["Clear Hash"]            << Option(on_clear_hash);
   o["Ponder"]                << Option(true);
+  //o["Prune"]                 << Option(false);
   o["MultiPV"]               << Option(1, 1, 500);
   o["Skill Level"]           << Option(20, 0, 20);
   o["Move Overhead"]         << Option(30, 0, 5000);
@@ -70,10 +76,20 @@ void init(OptionsMap& o) {
   o["Slow Mover"]            << Option(80, 10, 1000);
   o["nodestime"]             << Option(0, 0, 10000);
   o["UCI_Chess960"]          << Option(false);
-  o["SyzygyPath"]            << Option("<empty>", on_tb_path);
+  o["SyzygyPath"]            << Option("/dev/shm/syzy", on_tb_path);
   o["SyzygyProbeDepth"]      << Option(1, 1, 100);
   o["Syzygy50MoveRule"]      << Option(true);
   o["SyzygyProbeLimit"]      << Option(6, 0, 6);
+  //o["nuller"]      << Option(32,-256,256,on_nuller);
+   o["Book File"]                << Option("/dev/shm/Book.bin");
+     o["Best Book Move"]           << Option(true);
+      o["Book Power"]           <<  Option(200,0,1000);
+      o["OwnBook"]                  << Option(true);
+      o["BookLimit"]                  << Option(24,0,100);
+      o["BookRand"]                  << Option(100,0,100);
+      //o["SpaceWeight"]                  << Option(270,0,500,on_space_weight);
+      //o["KingsWeight"]                  << Option(270,0,500,on_kings_weight);
+
 }
 
 
